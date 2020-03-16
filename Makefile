@@ -28,9 +28,9 @@ uploadprod:
 test:
 	@printf "\n removing pyc files::\n" && find . -type f -name *.pyc -delete | echo
 	@printf "\n coverage erase::\n" && coverage erase
-	@printf "\n coverage run::\n" && coverage run --omit="*tests*,*.virtualenvs/*,*.venv/*,*__init__*,*/usr/local/lib/python2.7/dist-packages*" -m unittest discover
+	@printf "\n coverage run::\n" && coverage run --omit="*tests*,*.virtualenvs/*,*.venv/*,*.pyvenv/*,*__init__*,*/usr/local/lib/python2.7/dist-packages*" -m unittest discover
 	@printf "\n coverage report::\n" && coverage report --show-missing --fail-under=85
-	@printf "\n run black::\n" && black --line-length=100 --py36 .
+	@printf "\n run black::\n" && black --line-length=100 --py36 --exclude=".pyvenv/" . 
 	@printf "\n run pylint::\n" && pylint --enable=E --disable=W,R,C --unsafe-load-any-extension=y sewer/
 
 

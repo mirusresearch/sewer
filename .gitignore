@@ -41,6 +41,7 @@ htmlcov/
 
 # virtualenv
 .venv
+.pyvenv
 
 # certificates and keys
 *.csr

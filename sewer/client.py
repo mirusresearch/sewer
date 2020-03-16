@@ -448,35 +448,45 @@ class Client(object):
         """
         self.logger.info("check_authorization_status")
         desired_status = desired_status or ["pending", "valid"]
+
+        headers = {"User-Agent": self.User_Agent}
+        check_authorization_status_response = requests.get(
+            authorization_url, timeout=self.ACME_REQUEST_TIMEOUT, headers=headers
+        )
+        authorization_status = check_authorization_status_response.json()["status"]
+        self.logger.debug(
+            "check_authorization_status_response. status_code={0}. response={1}".format(
+                check_authorization_status_response.status_code,
+                self.log_response(check_authorization_status_response),
+            )
+        )
+
+        if authorization_status in desired_status:
+            self.logger.info("check_authorization_status_success")
+            return check_authorization_status_response
+        else:
+            self.logger.info("check_authorization_status_failure")
+            return False
+
+    def get_authorization_result(self, authorization_url, desired_status=None):
         number_of_checks = 0
+
         while True:
             time.sleep(self.ACME_AUTH_STATUS_WAIT_PERIOD)
-            headers = {"User-Agent": self.User_Agent}
-            check_authorization_status_response = requests.get(
-                authorization_url, timeout=self.ACME_REQUEST_TIMEOUT, headers=headers
-            )
-            authorization_status = check_authorization_status_response.json()["status"]
-            number_of_checks = number_of_checks + 1
-            self.logger.debug(
-                "check_authorization_status_response. status_code={0}. response={1}".format(
-                    check_authorization_status_response.status_code,
-                    self.log_response(check_authorization_status_response),
-                )
-            )
-            if number_of_checks == self.ACME_AUTH_STATUS_MAX_CHECKS:
-                raise StopIteration(
-                    "Checks done={0}. Max checks allowed={1}. Interval between checks={2}seconds.".format(
-                        number_of_checks,
-                        self.ACME_AUTH_STATUS_MAX_CHECKS,
-                        self.ACME_AUTH_STATUS_WAIT_PERIOD,
+
+            check_result = self.check_authorization_status(authorization_url, desired_status)
+            if check_result:
+                return check_result
+            else:
+                number_of_checks = number_of_checks + 1
+                if number_of_checks == self.ACME_AUTH_STATUS_MAX_CHECKS:
+                    raise StopIteration(
+                        "Checks done={0}. Max checks allowed={1}. Interval between checks={2}seconds.".format(
+                            number_of_checks,
+                            self.ACME_AUTH_STATUS_MAX_CHECKS,
+                            self.ACME_AUTH_STATUS_WAIT_PERIOD,
+                        )
                     )
-                )
-
-            if authorization_status in desired_status:
-                break
-
-        self.logger.info("check_authorization_status_success")
-        return check_authorization_status_response
 
     def respond_to_challenge(self, acme_keyauthorization, challenge_url):
         """
@@ -660,8 +670,7 @@ class Client(object):
             )
         return response
 
-    def get_certificate(self):
-        self.logger.debug("get_certificate")
+    def create_authorization_records(self):
         cleanup_kwargs_list = []
 
         try:
@@ -683,7 +692,14 @@ class Client(object):
                     "authorization_url": identifier_auth["url"],
                 }
                 responders.append(responder)
+            return cleanup_kwargs_list, responders, finalize_url
+        except Exception as E:
+            self.logger.error("Error: Unable to create auth records. error={0}".format(str(e)))
+            raise e
 
+    def wait_for_auth_success(self, responders):
+        try:
+            self.create_authorization_records()
             # for a case where you want certificates for *.example.com and example.com
             # you have to create both auth records AND then respond to the challenge.
             # see issues/83
@@ -692,7 +708,7 @@ class Client(object):
                 # response. The authorization can be in the "valid" state before submitting
                 # a challenge response if there was a previous authorization for these hosts
                 # that was successfully validated, still cached by the server.
-                auth_status_response = self.check_authorization_status(i["authorization_url"])
+                auth_status_response = self.get_authorization_result(i["authorization_url"])
                 if auth_status_response.json()["status"] == "pending":
                     self.respond_to_challenge(i["acme_keyauthorization"], i["challenge_url"])
 
@@ -700,15 +716,27 @@ class Client(object):
                 # Before sending a CSR, we need to make sure the server has completed the
                 # validation for all the authorizations
                 self.check_authorization_status(i["authorization_url"], ["valid"])
+        except Exception as E:
+            self.logger.error("Error: check auth success. error={0}".format(str(e)))
+            raise e
 
+    def cleanup_authorizations(self, cleanup_kwargs_list):
+        for cleanup_kwargs in cleanup_kwargs_list:
+            self.auth_provider.cleanup_authorization(**cleanup_kwargs)
+
+    def get_certificate(self):
+        self.logger.debug("get_certificate")
+
+        try:
+            cleanup_kwargs_list, responders, finalize_url = self.create_authorization_records()
+            self.wait_for_auth_success(responders)
             certificate_url = self.send_csr(finalize_url)
             certificate = self.download_certificate(certificate_url)
         except Exception as e:
             self.logger.error("Error: Unable to issue certificate. error={0}".format(str(e)))
             raise e
         finally:
-            for cleanup_kwargs in cleanup_kwargs_list:
-                self.auth_provider.cleanup_authorization(**cleanup_kwargs)
+            self.cleanup_authorizations(cleanup_kwargs_list)
 
         return certificate
 
