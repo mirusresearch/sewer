@@ -702,7 +702,7 @@ class Client(object):
                 }
                 responders.append(responder)
             return cleanup_kwargs_list, responders, finalize_url
-        except Exception as E:
+        except Exception as e:
             self.logger.error("Error: Unable to create auth records. error={0}".format(str(e)))
             raise e
 
@@ -725,7 +725,7 @@ class Client(object):
                 # Before sending a CSR, we need to make sure the server has completed the
                 # validation for all the authorizations
                 self.check_authorization_status(i["authorization_url"], ["valid"])
-        except Exception as E:
+        except Exception as e:
             self.logger.error("Error: check auth success. error={0}".format(str(e)))
             raise e
 
@@ -738,6 +738,13 @@ class Client(object):
 
         try:
             cleanup_kwargs_list, responders, finalize_url = self.create_authorization_records()
+        except Exception as e:
+            self.logger.error(
+                "Error: Unable to create authorizations records. error={0}".format(str(e))
+            )
+            raise e
+
+        try:
             self.wait_for_auth_success(responders)
             certificate_url = self.send_csr(finalize_url)
             certificate = self.download_certificate(certificate_url)
