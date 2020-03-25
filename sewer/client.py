@@ -708,7 +708,6 @@ class Client(object):
 
     def wait_for_auth_success(self, responders):
         try:
-            self.create_authorization_records()
             # for a case where you want certificates for *.example.com and example.com
             # you have to create both auth records AND then respond to the challenge.
             # see issues/83
@@ -724,7 +723,7 @@ class Client(object):
             for i in responders:
                 # Before sending a CSR, we need to make sure the server has completed the
                 # validation for all the authorizations
-                self.check_authorization_status(i["authorization_url"], ["valid"])
+                self.get_authorization_result(i["authorization_url"], ["valid"])
         except Exception as e:
             self.logger.error("Error: check auth success. error={0}".format(str(e)))
             raise e
