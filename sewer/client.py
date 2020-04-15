@@ -63,6 +63,7 @@ class Client(object):
         bits=2048,
         digest="sha256",
         auth_provider=None,
+        kid=None,
         ACME_REQUEST_TIMEOUT=7,
         ACME_AUTH_STATUS_WAIT_PERIOD=8,
         ACME_AUTH_STATUS_MAX_CHECKS=3,
@@ -180,7 +181,7 @@ class Client(object):
 
             # unique account identifier
             # https://tools.ietf.org/html/draft-ietf-acme-acme#section-6.2
-            self.kid = None
+            self.kid = kid
 
             self.certificate_key = certificate_key or self.create_certificate_key()
             self.csr = self.create_csr()
